@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/hyperledger/fabric/core/chaincode/shim"
 	"github.com/hyperledger/fabric/protos/peer"
@@ -11,11 +12,15 @@ type SmartContract struct {
 }
 
 type CharityNote struct {
-	Direction string `json:"direction"`
-	CostMoney int32 `json:"costMoney"`
+	Direction    string `json:"direction"`
+	CostMoney    int32  `json:"costMoney"`
 	DonationName string `json:"donationName"`
-	ALLMoney  int32	`json:"allMoney"`
-	LeftMoney	int32	`json:"leftMoney"`
+}
+
+type CharityUser struct {
+	DonationName string `json:"donationName"`
+	ALLMoney     string `json:"allMoney"`
+	LeftMoney    int32  `json:"leftMoney"`
 }
 
 func (s *SmartContract) Init(api shim.ChaincodeStubInterface) peer.Response {
@@ -23,35 +28,49 @@ func (s *SmartContract) Init(api shim.ChaincodeStubInterface) peer.Response {
 }
 
 func (s *SmartContract) Invoke(api shim.ChaincodeStubInterface) peer.Response {
-	// Extract the function and args from the transaction proposal
+
 	function, args := stub.GetFunctionAndParameters()
-	if function == "donation"{
+
+	switch function {
+	case "donation":
 		return s.donation(api, args)
-	}else if function == "queryDealOnce"{
+	case "queryDealOnce":
 		return s.queryDealOnce(api, args)
-	}else if function == "queryDealALL"{
+	case "queryDealALL":
 		return s.queryDealALL(api)
 	}
+
 	return shim.Error("Invalid function name.")
 }
 
-func (s *SmartContract)donation(api shim.ChaincodeStubInterface, args[]string) peer.Response{
+func (s *SmartContract) donation(api shim.ChaincodeStubInterface, args []string) peer.Response {
 	if len(args) != 2 {
 		return "", fmt.Errorf("need your name and money acount")
 	}
-	cn := &charityNote{
-		UserName: args[1]
-		
+	moneyCount, err := strconv.Atoi(args[2])
+	if err != nil {
+		return "", fmt.Errorf("strconv money error.")
 	}
+	cn := &CharityNote{
+		Direction:    "origin",
+		CostMoney:    0,
+		DonationName: args[1],
+	}
+	cu := &CharityUser{
+		DonationName: args[1],
+		ALLMoney:     moneyCount,
+		LeftMoney:    moneyCount,
+	}
+
 	return shim.Success(nil)
 }
 
-func (s *SmartContract)queryDealOnce(api shim.ChaincodeStubInterface, args[]string) peer.Response{
+func (s *SmartContract) queryDealOnce(api shim.ChaincodeStubInterface, args []string) peer.Response {
 
 	return shim.Success(nil)
 }
 
-func (s *SmartContract)queryDealALL(api shim.ChaincodeStubInterface) peer.Response{
+func (s *SmartContract) queryDealALL(api shim.ChaincodeStubInterface) peer.Response {
 
 	return shim.Success(nil)
 }
