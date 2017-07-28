@@ -1,9 +1,3 @@
-/*
- * Copyright IBM Corp All Rights Reserved
- *
- * SPDX-License-Identifier: Apache-2.0
- */
-
 package main
 
 import (
@@ -13,95 +7,59 @@ import (
 	"github.com/hyperledger/fabric/protos/peer"
 )
 
-// SimpleAsset implements a simple chaincode to manage an asset
-type SimpleAsset struct {
+type SmartContract struct {
 }
 
-type TargetNote struct {
+type CharityNote struct {
+	Direction string `json:"direction"`
+	CostMoney int32 `json:"costMoney"`
+	DonationName string `json:"donationName"`
+	ALLMoney  int32	`json:"allMoney"`
+	LeftMoney	int32	`json:"leftMoney"`
 }
 
-type charityNote struct {
-	UserName  string `json:"userName"`
-	AllMoney  string `json:"allMoney"`
-	Target    []*TargetNote
-	LeftMoney string `json:"leftMoney"`
+func (s *SmartContract) Init(api shim.ChaincodeStubInterface) peer.Response {
+	return shim.Success(nil)
 }
 
-// Init is called during chaincode instantiation to initialize any
-// data. Note that chaincode upgrade also calls this function to reset
-// or to migrate data.
-func (t *SimpleAsset) Init(stub shim.ChaincodeStubInterface) peer.Response {
-	// Get the args from the transaction proposal
-	args := stub.GetStringArgs()
-	if len(args) != 2 {
-		return shim.Error("Incorrect arguments. Expecting a key and a value")
+func (s *SmartContract) Invoke(api shim.ChaincodeStubInterface) peer.Response {
+	// Extract the function and args from the transaction proposal
+	function, args := stub.GetFunctionAndParameters()
+	if function == "donation"{
+		return s.donation(api, args)
+	}else if function == "queryDealOnce"{
+		return s.queryDealOnce(api, args)
+	}else if function == "queryDealALL"{
+		return s.queryDealALL(api)
 	}
+	return shim.Error("Invalid function name.")
+}
 
-	// Set up any variables or assets here by calling stub.PutState()
-
-	// We store the key and the value on the ledger
-	err := stub.PutState(args[0], []byte(args[1]))
-	if err != nil {
-		return shim.Error(fmt.Sprintf("Failed to create asset: %s", args[0]))
+func (s *SmartContract)donation(api shim.ChaincodeStubInterface, args[]string) peer.Response{
+	if len(args) != 2 {
+		return "", fmt.Errorf("need your name and money acount")
+	}
+	cn := &charityNote{
+		UserName: args[1]
+		
 	}
 	return shim.Success(nil)
 }
 
-// Invoke is called per transaction on the chaincode. Each transaction is
-// either a 'get' or a 'set' on the asset created by Init function. The Set
-// method may create a new asset by specifying a new key-value pair.
-func (t *SimpleAsset) Invoke(stub shim.ChaincodeStubInterface) peer.Response {
-	// Extract the function and args from the transaction proposal
-	fn, args := stub.GetFunctionAndParameters()
+func (s *SmartContract)queryDealOnce(api shim.ChaincodeStubInterface, args[]string) peer.Response{
 
-	var result string
-	var err error
-	if fn == "set" {
-		result, err = set(stub, args)
-	} else { // assume 'get' even if fn is nil
-		result, err = get(stub, args)
-	}
-	if err != nil {
-		return shim.Error(err.Error())
-	}
-
-	// Return the result as success payload
-	return shim.Success([]byte(result))
+	return shim.Success(nil)
 }
 
-// Set stores the asset (both key and value) on the ledger. If the key exists,
-// it will override the value with the new one
-func set(stub shim.ChaincodeStubInterface, args []string) (string, error) {
-	if len(args) != 2 {
-		return "", fmt.Errorf("Incorrect arguments. Expecting a key and a value")
-	}
+func (s *SmartContract)queryDealALL(api shim.ChaincodeStubInterface) peer.Response{
 
-	err := stub.PutState(args[0], []byte(args[1]))
-	if err != nil {
-		return "", fmt.Errorf("Failed to set asset: %s", args[0])
-	}
-	return args[1], nil
+	return shim.Success(nil)
 }
 
-// Get returns the value of the specified asset key
-func get(stub shim.ChaincodeStubInterface, args []string) (string, error) {
-	if len(args) != 1 {
-		return "", fmt.Errorf("Incorrect arguments. Expecting a key")
-	}
-
-	value, err := stub.GetState(args[0])
-	if err != nil {
-		return "", fmt.Errorf("Failed to get asset: %s with error: %s", args[0], err)
-	}
-	if value == nil {
-		return "", fmt.Errorf("Asset not found: %s", args[0])
-	}
-	return string(value), nil
-}
-
-// main function starts up the chaincode in the container during instantiate
 func main() {
-	if err := shim.Start(new(SimpleAsset)); err != nil {
-		fmt.Printf("Error starting SimpleAsset chaincode: %s", err)
+	// Create a new Smart Contract
+	err := shim.Start(new(SmartContract))
+	if err != nil {
+		fmt.Printf("Error creating new Smart Contract: %s", err)
 	}
 }
