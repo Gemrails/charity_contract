@@ -109,28 +109,48 @@ func (s *SmartContract) donation(api shim.ChaincodeStubInterface, args []string)
 	if err != nil {
 		return shim.Error("strconv money error.")
 	}
-	cNote := &CharityNote{
-		Direction:    D0,
-		CostMoney:    0,
-		DonationName: args[0],
-	}
-	cUser := &CharityUser{
-		DonationName: args[0],
-		ALLMoney:     int32(moneyCount),
-		LeftMoney:    int32(moneyCount),
-		DealNumbers:  0,
-	}
-	cNoteKey := Skey(cNote.DonationName, cUser.DealNumbers)
-	cNoteBytes, _ := json.Marshal(cNote)
-	err = s.set(api, cNoteKey, cNoteBytes)
+	cUser := CharityUser{}
+	cNote := CharityNote{}
+	cUserValues, err := api.GetState(args[0])
 	if err != nil {
-		return shim.Error(err.Error())
+		return shim.Error("get cuer info error, " + err.Error())
 	}
-	cUserKey := cNote.DonationName
-	cUserBytes, _ := json.Marshal(cUser)
-	err = s.set(api, cUserKey, cUserBytes)
-	if err != nil {
-		return shim.Error(err.Error())
+
+	if cUserValues == nil {
+		cUser = CharityUser{
+			DonationName: args[0],
+			ALLMoney:     int32(moneyCount),
+			LeftMoney:    int32(moneyCount),
+			DealNumbers:  0,
+		}
+		cNote = CharityNote{
+			Direction:    "nochange",
+			CostMoney:    0,
+			DonationName: args[0],
+		}
+		cNoteKey := Skey(cNote.DonationName, cUser.DealNumbers)
+		cNoteBytes, _ := json.Marshal(cNote)
+		err = s.set(api, cNoteKey, cNoteBytes)
+		if err != nil {
+			return shim.Error("set cnote error" + err.Error())
+		}
+		cUserKey := cNote.DonationName
+		cUserBytes, _ := json.Marshal(cUser)
+		err = s.set(api, cUserKey, cUserBytes)
+		if err != nil {
+			return shim.Error("set cuser error" + err.Error())
+		}
+	} else {
+		json.Unmarshal(cUserValues, &cUser)
+		cUser.ALLMoney = cUser.ALLMoney + int32(moneyCount)
+		cUser.LeftMoney = cUser.LeftMoney + int32(moneyCount)
+		cUserKey := args[0]
+		cUserBytes, _ := json.Marshal(cUser)
+		err = s.set(api, cUserKey, cUserBytes)
+
+		if err != nil {
+			return shim.Error("update cuser error" + err.Error())
+		}
 	}
 	return shim.Success(nil)
 }
@@ -170,7 +190,7 @@ func (s *SmartContract) queryDealALL(api shim.ChaincodeStubInterface, args []str
 	totalDealNums := cUser.DealNumbers
 
 	cNoteKeyEnd := Skey(args[0], totalDealNums)
-	cNoteKeyStart := Skey(args[0], 1)
+	cNoteKeyStart := Skey(args[0], 0)
 	if cNoteKeyEnd == cNoteKeyStart {
 		var buffer bytes.Buffer
 		cNoteValue, err := s.get(api, cNoteKeyEnd)
