@@ -1,7 +1,10 @@
 package main
 
 import (
-	"charity_contract/tools"
+	"bytes"
+	"crypto/sha1"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"strconv"
 
@@ -20,10 +23,29 @@ type CharityNote struct {
 
 type CharityUser struct {
 	DonationName string `json:"donationName"`
-	ALLMoney     string `json:"allMoney"`
+	ALLMoney     int32  `json:"allMoney"`
 	LeftMoney    int32  `json:"leftMoney"`
 	DealNumbers  int    `json:"dealNumbers"`
 }
+
+func Sha8(s string) string {
+	h := sha1.New()
+	h.Write([]byte(s))
+	bs := h.Sum(nil)
+	return hex.EncodeToString(bs[:4])
+}
+
+func Skey(name string, num int) string {
+	return fmt.Sprintf("%s_%d", Sha8(name), num)
+}
+
+const (
+	D0 string = "D0"
+	// origin
+	D1 string = "D1"
+	D2 string = "D2"
+	D3 string = "D3"
+)
 
 func (s *SmartContract) Init(api shim.ChaincodeStubInterface) peer.Response {
 	return shim.Success(nil)
@@ -31,7 +53,7 @@ func (s *SmartContract) Init(api shim.ChaincodeStubInterface) peer.Response {
 
 func (s *SmartContract) Invoke(api shim.ChaincodeStubInterface) peer.Response {
 
-	function, args := stub.GetFunctionAndParameters()
+	function, args := api.GetFunctionAndParameters()
 
 	switch function {
 	case "donation":
@@ -39,7 +61,7 @@ func (s *SmartContract) Invoke(api shim.ChaincodeStubInterface) peer.Response {
 	case "queryDealOnce":
 		return s.queryDealOnce(api, args)
 	case "queryDealALL":
-		return s.queryDealALL(api)
+		return s.queryDealALL(api, args)
 	case "queryUserInfo":
 		return s.queryUserInfo(api, args)
 	case "donationRules":
@@ -49,26 +71,27 @@ func (s *SmartContract) Invoke(api shim.ChaincodeStubInterface) peer.Response {
 	return shim.Error("Invalid function name.")
 }
 
-func (s *SmartContract) set(api shim.ChaincodeStubInterface, key string, value string) error {
-	err := stub.PutState(args[0], []byte(value))
+func (s *SmartContract) set(api shim.ChaincodeStubInterface, key string, value []byte) error {
+	err := api.PutState(key, value)
 	if err != nil {
-		return fmt.Errorf("Failed to set asset: %s", args[0])
+		return fmt.Errorf("Failed to set asset: %s", key)
 	}
 	return nil
 }
 
-func (s *SmartContract) get(api shim.ChaincodeStubInterface, key string) (string, error) {
-	value, err := stub.GetState(key)
+func (s *SmartContract) get(api shim.ChaincodeStubInterface, key string) ([]byte, error) {
+	value, err := api.GetState(key)
 	if err != nil {
-		return "", fmt.Errorf("Failed to get asset: %s with error: %s", args[0], err)
+		return nil, fmt.Errorf("Failed to get asset: %s with error: %s", key, err)
 	}
 	if value == nil {
-		return "", fmt.Errorf("Asset not found: %s", args[0])
+		return nil, fmt.Errorf("Asset not found: %s", key)
 	}
 	return value, nil
 }
 
-func (s *SmartContract)getRange(api shim.ChaincodeStubInterface, keyStart string, keyEnd string) (shim.StateQueryIteratorInterface, error){
+/*
+func (s *SmartContract) getRange(api shim.ChaincodeStubInterface, keyStart string, keyEnd string) (shim.StateQueryIteratorInterface, error) {
 	resultsIterator, err := api.GetStateByRange(keyStart, keyEnd)
 	if err != nil {
 		return shim.StateQueryIteratorInterface, fmt.Errorf("get range error, %s", err)
@@ -76,35 +99,36 @@ func (s *SmartContract)getRange(api shim.ChaincodeStubInterface, keyStart string
 	defer resultsIterator.Close()
 	return resultsIterator, nil
 }
+*/
 
 func (s *SmartContract) donation(api shim.ChaincodeStubInterface, args []string) peer.Response {
 	if len(args) != 2 {
 		return shim.Error("need your name and deal numbers")
 	}
-	moneyCount, err := strconv.Atoi(args[2])
+	moneyCount, err := strconv.ParseInt(args[1], 10, 64)
 	if err != nil {
 		return shim.Error("strconv money error.")
 	}
 	cNote := &CharityNote{
-		Direction:    tools.D0,
+		Direction:    D0,
 		CostMoney:    0,
-		DonationName: args[1],
+		DonationName: args[0],
 	}
 	cUser := &CharityUser{
-		DonationName: args[1],
-		ALLMoney:     moneyCount,
-		LeftMoney:    moneyCount,
-		DealNumbers:  0
+		DonationName: args[0],
+		ALLMoney:     int32(moneyCount),
+		LeftMoney:    int32(moneyCount),
+		DealNumbers:  0,
 	}
-	cNoteKey := tools.Skey(cNote.DonationName, cUser.DealNumbers)
+	cNoteKey := Skey(cNote.DonationName, cUser.DealNumbers)
 	cNoteBytes, _ := json.Marshal(cNote)
-	err := s.set(api, cNoteKey, cNoteBytes)
+	err = s.set(api, cNoteKey, cNoteBytes)
 	if err != nil {
 		return shim.Error(err.Error())
 	}
 	cUserKey := cNote.DonationName
 	cUserBytes, _ := json.Marshal(cUser)
-	s.set(api, cUserKey, cUserBytes)
+	err = s.set(api, cUserKey, cUserBytes)
 	if err != nil {
 		return shim.Error(err.Error())
 	}
@@ -115,10 +139,14 @@ func (s *SmartContract) queryDealOnce(api shim.ChaincodeStubInterface, args []st
 	if len(args) != 2 {
 		return shim.Error("need your name and deal numbers")
 	}
-	if args[2] == 0 {
+	if args[1] == "0" {
 		return shim.Error("cant query 0 nums deal.")
 	}
-	cNoteKey := tools.Skey(args[1], args[2])
+	nums, err := strconv.Atoi(args[1])
+	if err != nil {
+		return shim.Error(err.Error())
+	}
+	cNoteKey := Skey(args[0], nums)
 	cNoteValue, err := s.get(api, cNoteKey)
 	if err != nil {
 		return shim.Error(err.Error())
@@ -126,30 +154,51 @@ func (s *SmartContract) queryDealOnce(api shim.ChaincodeStubInterface, args []st
 	return shim.Success(cNoteValue)
 }
 
-func (s *SmartContract) queryDealALL(api shim.ChaincodeStubInterface) peer.Response {
-	if len(args) != 1{
-		return shim.Error("need your name")	
+func (s *SmartContract) queryDealALL(api shim.ChaincodeStubInterface, args []string) peer.Response {
+	if len(args) != 1 {
+		return shim.Error("need your name")
 	}
-	cUserValue := s.get(api, args[1])
-	cUser := &CharityUser{}
-	json.Unmarshal(cUserValue, &cUser)
-	totalDealNums, err := strconv.Atoi(cUser.DealNumbers)
+	cUserValue, err := s.get(api, args[0])
 	if err != nil {
-		return shim.Error("strconv totalDealNums error.")
+		return shim.Error("get cuer key error.")
 	}
-	cNoteKeyEnd := tools.Skey(args[1], totalDealNums)
-	cNoteKeyStart := tools.Skey(args[1], 1)
+	cUser := &CharityUser{}
+	err = json.Unmarshal(cUserValue, &cUser)
+	if err != nil {
+		return shim.Error("json cuservalue error.")
+	}
+	totalDealNums := cUser.DealNumbers
+
+	cNoteKeyEnd := Skey(args[0], totalDealNums)
+	cNoteKeyStart := Skey(args[0], 1)
+	if cNoteKeyEnd == cNoteKeyStart {
+		var buffer bytes.Buffer
+		cNoteValue, err := s.get(api, cNoteKeyEnd)
+		if err != nil {
+			return shim.Error(err.Error())
+		}
+		buffer.WriteString("[[[")
+		buffer.WriteString("{\"Key\":")
+		buffer.WriteString("\"")
+		buffer.WriteString(cNoteKeyEnd)
+		buffer.WriteString("\"")
+		buffer.WriteString(", \"Record\":")
+		buffer.WriteString(string(cNoteValue))
+		buffer.WriteString("}")
+		buffer.WriteString("]]]")
+		return shim.Success(buffer.Bytes())
+	}
 	resultsIter, err := api.GetStateByRange(cNoteKeyStart, cNoteKeyEnd)
 	if err != nil {
 		return shim.Error(err.Error())
 	}
-	defer resultsIterator.Close()	
+	defer resultsIter.Close()
 
 	var buffer bytes.Buffer
 	buffer.WriteString("[[[")
 	bArrayMemberAlreadyWritten := false
-	for resultsIter.HasNext(){
-		queryResponse, err := resultsIterator.Next()
+	for resultsIter.HasNext() {
+		queryResponse, err := resultsIter.Next()
 		if err != nil {
 			return shim.Error(err.Error())
 		}
@@ -163,20 +212,81 @@ func (s *SmartContract) queryDealALL(api shim.ChaincodeStubInterface) peer.Respo
 		buffer.WriteString(", \"Record\":")
 		buffer.WriteString(string(queryResponse.Value))
 		buffer.WriteString("}")
-		bArrayMemberAlreadyWritten == true	
+		bArrayMemberAlreadyWritten = true
 	}
-	buffer.WriteString("]]]")	
+	buffer.WriteString("]]]")
 
 	return shim.Success(buffer.Bytes())
 }
 
-func (s *SmartContract)queryUserInfo(api shim.ChaincodeStubInterface, name string)peer.Response{
-
-	return shim.Success(nil)
+func (s *SmartContract) queryUserInfo(api shim.ChaincodeStubInterface, args []string) peer.Response {
+	if len(args) != 1 {
+		return shim.Error("need your name")
+	}
+	cUserValue, err := s.get(api, args[0])
+	if err != nil {
+		return shim.Error(err.Error())
+	}
+	return shim.Success(cUserValue)
 }
 
-func (s *SmartContract)donationRules(api shim.ChaincodeStubInterface, model string)peer.Response{
-	
+//########################
+// donation ruls contract
+//########################
+
+func (s *SmartContract) modelAssign(api shim.ChaincodeStubInterface, name string, id string) error {
+	cUserValue, err := s.get(api, name)
+	if err != nil {
+		return fmt.Errorf("modelassign get name error")
+	}
+	cUser := &CharityUser{}
+	err = json.Unmarshal(cUserValue, &cUser)
+	if err != nil {
+		return fmt.Errorf("get cuser error")
+	}
+	cNote := &CharityNote{
+		Direction:    id,
+		CostMoney:    cUser.LeftMoney,
+		DonationName: name,
+	}
+
+	cNoteKey := Skey(name, cUser.DealNumbers+1)
+	cNoteBytes, _ := json.Marshal(cNote)
+	err = s.set(api, cNoteKey, cNoteBytes)
+	if err != nil {
+		return fmt.Errorf("set cnote error")
+	}
+	cUser.LeftMoney = 0
+	cUser.DealNumbers = cUser.DealNumbers + 1
+	cUserBytes, _ := json.Marshal(cUser)
+	err = s.set(api, name, cUserBytes)
+	if err != nil {
+		return fmt.Errorf("set cuser error")
+	}
+	return nil
+}
+
+func (s *SmartContract) modelRandom(args []string) error {
+	return nil
+}
+
+func (s *SmartContract) donationRules(api shim.ChaincodeStubInterface, args []string) peer.Response {
+
+	if len(args) == 3 {
+		// assignModel
+		if args[1] == "assign" {
+			//'{"Args":["username", "assing", "xiwangxiaoxue"]}'
+			err := s.modelAssign(api, args[0], args[2])
+			if err != nil {
+				return shim.Error(err.Error())
+			}
+		}
+	} else if len(args) == 2 {
+
+	} else {
+		return shim.Error("donationRules args Error.")
+	}
+
 	return shim.Success(nil)
 }
 
