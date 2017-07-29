@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"strconv"
 
 	"github.com/hyperledger/fabric/core/chaincode/shim"
@@ -286,7 +287,48 @@ func (s *SmartContract) modelAssign(api shim.ChaincodeStubInterface, name string
 	return nil
 }
 
-func (s *SmartContract) modelRandom(args []string) error {
+func (s *SmartContract) modelRandom(api shim.ChaincodeStubInterface, name string) error {
+	cUserValue, err := s.get(api, name)
+	if err != nil {
+		return fmt.Errorf("modelassign get name error")
+	}
+	cUser := &CharityUser{}
+	err = json.Unmarshal(cUserValue, &cUser)
+	if err != nil {
+		return fmt.Errorf("get cuser error")
+	}
+	var cost int32
+	cost = 10000
+	if cUser.LeftMoney < 10000 {
+		fmt.Print("left money less than 10000. can't do.")
+		cost = cUser.LeftMoney
+	}
+	randomList := []string{"xiwanggongcheng", "zaiqu", "guojijiuyuan", "kunnanjiating"}
+	t := rand.Intn(3)
+	cNote := &CharityNote{
+		Direction:    randomList[t],
+		CostMoney:    cost,
+		DonationName: name,
+	}
+	cNoteKey := Skey(name, cUser.DealNumbers+1)
+	cNoteBytes, _ := json.Marshal(cNote)
+	err = s.set(api, cNoteKey, cNoteBytes)
+	if err != nil {
+		return fmt.Errorf("set cnote error")
+	}
+	// 更新charityNote
+
+	cUser.LeftMoney = cUser.LeftMoney - cost
+	cUser.DealNumbers = cUser.DealNumbers + 1
+	cUserBytes, _ := json.Marshal(cUser)
+	err = s.set(api, name, cUserBytes)
+	if err != nil {
+		return fmt.Errorf("set cuser error")
+	}
+	// 更新charityUser
+
+	//###########################
+	// 随机4个机构其中的一个，单次最大捐款额度为1w
 	return nil
 }
 
@@ -302,7 +344,12 @@ func (s *SmartContract) donationRules(api shim.ChaincodeStubInterface, args []st
 			}
 		}
 	} else if len(args) == 2 {
-
+		if args[1] == "random" {
+			err := s.modelRandom(api, args[0])
+			if err != nil {
+				return shim.Error(err.Error())
+			}
+		}
 	} else {
 		return shim.Error("donationRules args Error.")
 	}
