@@ -189,7 +189,7 @@ func (s *SmartContract) queryDealALL(api shim.ChaincodeStubInterface, args []str
 	}
 	totalDealNums := cUser.DealNumbers
 
-	cNoteKeyEnd := Skey(args[0], totalDealNums)
+	cNoteKeyEnd := Skey(args[0], totalDealNums+1)
 	cNoteKeyStart := Skey(args[0], 0)
 	if cNoteKeyEnd == cNoteKeyStart {
 		var buffer bytes.Buffer
@@ -219,6 +219,7 @@ func (s *SmartContract) queryDealALL(api shim.ChaincodeStubInterface, args []str
 	bArrayMemberAlreadyWritten := false
 	for resultsIter.HasNext() {
 		queryResponse, err := resultsIter.Next()
+		fmt.Printf("requset is %s", queryResponse.Key)
 		if err != nil {
 			return shim.Error(err.Error())
 		}
@@ -235,7 +236,6 @@ func (s *SmartContract) queryDealALL(api shim.ChaincodeStubInterface, args []str
 		bArrayMemberAlreadyWritten = true
 	}
 	buffer.WriteString("]]]")
-
 	return shim.Success(buffer.Bytes())
 }
 
