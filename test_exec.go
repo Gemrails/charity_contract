@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+
+	"github.com/hyperledger/fabric/core/chaincode/shim"
 )
 
 type CharityUser struct {
@@ -74,6 +76,32 @@ func RunCommand(arg string) (string, error) {
 	}
 	fmt.Println("end")
 	return string(f), nil
+}
+
+func checkInvoke(stub *shim.MockStub, args [][]byte) {
+	res := stub.MockInvoke("0", args)
+	if res.Status != shim.OK {
+		fmt.Println("Invoke", args, "failed", string(res.Message))
+	}
+}
+
+func checkDonation(stub *shim.MockStub, name string) {
+	res := stub.MockInvoke("0", [][]byte{[]byte("queryUserInfo"), []byte(name)})
+	if res.Status != shim.OK {
+		fmt.Println("queryUserInfo", name, "failed", string(res.Message))
+	}
+	if res.Payload == nil {
+		fmt.Println("Query", name, "failed to get value")
+	}
+	fmt.Println("Query value", "name is ", name, "value is ", value)
+
+}
+
+func TestCharityContract_Donation() {
+	scc := new(SmartContract)
+	stub := shim.NewMockStub("charity", scc)
+
+	checkDonation(t, stub, "mm")
 }
 
 func main() {
